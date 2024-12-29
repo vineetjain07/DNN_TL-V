@@ -1,16 +1,6 @@
 \m4_TLV_version 1d: tl-x.org
 \SV
 
-   // =========================================
-   // Welcome!  Try the tutorials via the menu.
-   // =========================================
-
-   // Default Makerchip TL-Verilog Code Template
-   
-   // Macro providing required top-level module definition, random
-   // stimulus support, and Verilator config.
-
-// some defination
 m4+definitions(['   
    m4_define(['M4_PRETRAINED'],1)
    m4_define(['M4_INPUTDATAWIDTH'],8)
@@ -18,8 +8,10 @@ m4+definitions(['
    m4_define(['M4_NUMWEIGHT_LAYER2'],30)
    m4_define(['M4_NUMWEIGHT_LAYER3'],30)
    m4_define(['M4_WEIGHTINTWIDTH'],1)
-   m4_define(['M4_ADDRESSWIDTH'],5)          
-   
+   m4_define(['M4_ADDRESSWIDTH'],5)
+   m4_define(['M4_NUM_LAYER1_NEURONS'],30)
+   m4_define(['M4_NUM_LAYER2_NEURONS'],30)
+   m4_define(['M4_NUM_LAYER3_NEURONS'],30)
 '])
 //Bias Memory - it contains only a single BIAS value (hence only need for 'rd_en' and 'rd_address' ports)
 //parameter : /_top             -> top scope for bias memory
@@ -175,10 +167,11 @@ m4+definitions(['
    )
    m4_define(['M4_ADDRESSWIDTH'], \$clog2(#_numinputweights))
 
+   
    /_neuron
       @M4_FETCH_STAGE
          $irst = /_top<>0$_reset;
-         $input[#_inputdatawidth-1:0] = /_top$_myinput[#_inputdatawidth-1:0];
+         $input[#_inputdatawidth-1:0] = $rand[#_inputdatawidth-1:0]; // /_top$_myinput[#_inputdatawidth-1:0];
          $input_valid = /_top$_myinputvalid;
    m4+biasmem(/_neuron,/_biasmem, #_inputdatawidth, @M4_FETCH_STAGE, @M4_FETCH_STAGE, $biasReg)
    /_neuron
@@ -271,8 +264,8 @@ m4+definitions(['
       @m4_fetch_stage
          $reset = /_top<>0$_reset; 
          $myinputvalid = /_top$_myinputvalid;
-         $myinput[#_inputdatawidth - 1:0] = /_top$_myinput[#_inputdatawidth - 1:0];
-      /_layerhier[#_numneuron - 1 :0]
+         //$myinput[#_inputdatawidth - 1:0] = /_top$_myinput[#_inputdatawidth - 1:0];
+      /_layerhier[m4_eval(#_numneuron - 1):0]
          m4_pushdef(['m4_neuronnum'], #m4_layerhier)
          m4+neuron(/_top/_layer, /_neuron, /_biasmem, /_weightmem, #_layernum, m4_neuronnum, #_pipedepth, #_numinputweights, #_inputdatawidth, #_weightintwidth, $reset, $myinput, $myinputvalid, $out, $outvalid)
          @0
@@ -291,14 +284,62 @@ m4+definitions(['
 \SV
    m4_makerchip_module   // (Expanded in Nav-TLV pane.)
 \TLV
+   \viz_js
+      box: {strokeWidth: 0, left: -100, top: -75, width: 550, height: 1400, fill: "#BBBBBB"},
+         init() {
+            let widgets = {}
+            widgets.title = new fabric.Text("Neural Network Architecture", {
+                  left: 180, top: -50,
+                  originX: "center",
+                  fontSize: 22, fontFamily: "Courier New", fontWeight: "bold"
+            })
+            widgets.input = new fabric.Text("Input", {
+                 left: -80, top: 520,
+                 fontSize: 20, fontFamily: "Courier New",
+            })
+            return widgets
+         }
    |pipe1
       @0
          $reset = *reset;
          $cnt[\$clog2(M4_NUMWEIGHT_LAYER1) : 0] = $reset ? '0 : 
                                         >>1$cnt + 1;
          $myinputvalid1 = (($cnt >= 1) && ($cnt <=  M4_NUMWEIGHT_LAYER1));
+         \viz_js
+            //template: {dot: ["Circle", {radius: 30, fill: "red"}]},
+            box: {strokeWidth: 0, left: 20, top: 35, width: 50, height: 400},
+            init() {
+               let widgets = {}
+               widgets.title = new fabric.Text("Layer 1", {
+                     left: 50, top: 0,
+                     originX: "center",
+                     fontSize: 20, fontFamily: "Courier New",
+               })
+               return widgets
+            }
+         
       //m4+neuron(|pipe, /neuron, /biasmem, /weightmem, 0, 0, 5, M4_NUMWEIGHT, M4_INPUTDATAWIDTH, M4_WEIGHTINTWIDTH, $reset, $myinput, $myinputvalid, $out, $outvalid)
       m4+layer(|pipe1, /layer1, /layernum1, /neuron1, /biasmem1, /weightmem1, 0, 30, 5, M4_NUMWEIGHT_LAYER1, M4_INPUTDATAWIDTH, M4_WEIGHTINTWIDTH, $reset, $myinput1, $myinputvalid1, $out1, $outvalid1)
+      
+      @4
+         /layer1
+            /layernum1[29:0]
+               \viz_js
+                  layout: "vertical",
+                  box: {top: 30, left: 40, strokeWidth: 0, width: 40, height: 40},
+                  render() {
+                     let num = '/neuron1$out'.asInt()*15
+                     return [
+                        new fabric.Circle({
+                           radius: 10,
+                           fill: `rgb(${num}, 0, 0)`,
+                           style: {
+                              margin: 2
+                           }
+                        }),
+                     ]
+                  },
+                  where: {top: 80, left: 80},
    
    |pipe2
       @0
@@ -314,9 +355,58 @@ m4+definitions(['
          $myinputvalid2 = (/top|pipe1<>0$reset | (>>1$count_layer1 == M4_NUMWEIGHT_LAYER1)) ? '0 :
                            ($outvalid1[0] & ! >>1$outvalid1[0]) ? 1'b1 :
                            (>>1$count_layer1 >= 1) ? 1'b1 : $RETAIN;
-         
+         \viz_js
+            box: {strokeWidth: 0, left: 150, top: 35, width: 50, height: 400},
+            init() {
+               let widgets = {}
+               widgets.title = new fabric.Text("Layer 2", {
+                     left: 170, top: 0,
+                     originX: "center",
+                     fontSize: 20, fontFamily: "Courier New",
+               })
+               return widgets
+            }
       m4+layer(|pipe2, /layer2, /layernum2, /neuron2, /biasmem2, /weightmem2, 1, 30, 5, M4_NUMWEIGHT_LAYER2, M4_INPUTDATAWIDTH, M4_WEIGHTINTWIDTH, $reset, $myinput2, $myinputvalid2, $out2, $outvalid2)
-   
+      
+      @4
+         /layer2
+            /layernum2[29:0]
+               \viz_js
+                  layout: "vertical",
+                  box: {top: 30, left: 0, strokeWidth: 0, width: 40, height: 40},
+                  render() {
+                     let num = '/neuron2$out'.asInt()*15
+                     return [
+                        new fabric.Circle({
+                           radius: 10,
+                           fill: `rgb(${num}, 0,0)`,
+                        })
+                     ]
+                  },
+                  where: {top: 80, left: 160},
+      
+      
+      @4
+         /layer2
+            /layernum2[29:0]
+               \viz_js
+                  layout: {top: 0, left: 0}
+               /layernum1[29:0]
+                  \viz_js
+                     box: {strokeWidth: 0},
+                     layout: {top: 40, left: 0},
+                     render(){
+                        let valr = '/layernum2/neuron2$out'.asInt()*10
+                        let valg = '/top|pipe1/layer1/layernum1/neuron1$out'.asInt()*3
+                        console.log(valg)
+                        return [new fabric.Line([
+                           0, 0, 100,
+                           (this.getIndex("layernum2") - this.getIndex("layernum1")) * 40],
+                           {stroke: `rgb(${valr},  ${valg}, 0)`, strokeWidth: 3})
+                        ]
+                     },
+                     where: {top: 60, left: 60},
+      
    |pipe3
       @0
          $ANY = /top|pipe2/layer2>>4$ANY;
@@ -331,13 +421,81 @@ m4+definitions(['
          $myinputvalid3 = (/top|pipe1<>0$reset | (>>1$count_layer2 == M4_NUMWEIGHT_LAYER2)) ? '0 :
                            ($outvalid2[0] & ! >>1$outvalid2[0]) ? 1'b1 :
                            (>>1$count_layer2 >= 1) ? 1'b1 : $RETAIN;
-         
+         \viz_js
+            box: {strokeWidth: 0, left: 290, top: 35, width: 50, height: 400},
+            init() {
+               let widgets = {}
+               widgets.title = new fabric.Text("Layer 3", {
+                     left: 320, top: 0,
+                     originX: "center",
+                     fontSize: 20, fontFamily: "Courier New",
+               })
+               return widgets
+            }
       m4+layer(|pipe3, /layer3, /layernum3, /neuron3, /biasmem3, /weightmem3, 2, 30, 5, M4_NUMWEIGHT_LAYER3, M4_INPUTDATAWIDTH, M4_WEIGHTINTWIDTH, $reset, $myinput3, $myinputvalid3, $out3, $outvalid3)
+      
+      @4
+         /layer3
+            /layernum3[29:0]
+               \viz_js
+                  layout: "vertical",
+                  box: {top: 30, left: 100, strokeWidth: 0, width: 40, height: 40},
+                  render() {
+                     let $valid = '/neuron3$outvalid'.asInt()
+                     let num = '/neuron3$out'.asInt()*10
+                     return [
+                        new fabric.Circle({
+                           radius: 10,
+                           fill: `rgb(${num}, 0, 0)`,
+                           style: {
+                              margin: 2
+                           }
+                        }),
+                     ]
+                  },
+                  where: {top: 80, left: 400},
+      
+      @5
+         /layer3
+            /layernum3[29:0]
+               \viz_js
+                  layout: {top: 0, left: 0}
+               /layernum2[29:0]
+                  \viz_js
+                     box: {strokeWidth: 0},
+                     layout: {top: 40, left: 0},
+                     render(){
+                        let valr = '/layernum3/neuron3$out'.asInt()*10
+                        let valg = '/top|pipe2/layer2/layernum2/neuron2$out'.asInt()*3
+                        return [new fabric.Line([
+                           0, 0, 120, 
+                           (this.getIndex("layernum3") - this.getIndex("layernum2")) * 40],
+                           {stroke: `rgb(${valr}, ${valg}, 0)`, strokeWidth: 3})
+                        ]
+                     },
+                     where: {top: 60, left: 180},
    
    |pipe
       @0
          $result[m4_eval(30 * M4_INPUTDATAWIDTH)-1:0] = /top|pipe3/layer3>>4$out3;
          $resultvalid = /top|pipe3/layer3>>4$outvalid3;
+         \viz_js
+            box: {strokeWidth: 0},
+            
+            init() {
+               let widgets = {}
+               widgets.title = new fabric.Text("Output", {
+                     left: 400, top: 520,
+                     originX: "center",
+                     fontSize: 20, fontFamily: "Courier New",
+               })
+               widgets.layer_name = new fabric.Text("Hidden Layers", {
+                     left: 170, top: 1250,
+                     originX: "center",
+                     fontSize: 20, fontFamily: "Courier New",
+               })
+               return widgets
+            }
    // Assert these to end simulation (before Makerchip cycle limit).
    *passed = *cyc_cnt > 200;
    *failed = 1'b0;
